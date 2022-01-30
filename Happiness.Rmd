@@ -1,0 +1,633 @@
+---
+title: '"Are you happy?"'
+author: "FIbry Gro"
+date: "1/23/2022"
+output: 
+  rmdformats::downcute:
+    toc_depth: 3
+    toc_float: 
+        collapsed: True
+    downcute_theme: "chaos"
+    highlight: tango
+  
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+```{r}
+knitr::include_graphics("happiness.png")
+```
+
+Are you happy? How are other people? And were they happier in the past? Those questions are very difficult to answer due to the uncertainty of the "happiness" definition. However, ["The World Happiness Report"](https://worldhappiness.report) generates a regularly annual report regarding global happiness and life satisfaction. The score is based on the pooled results from [Gallup World Poll](https://www.gallup.com/analytics/318875/global-research.aspx), which is a set of the representative survey more than 160 countries. The survey itself asked: "On which step ladder do you imagine your life is?". The possible highest and lowest of level satisfaction is 10 and  0, respectively. This life satisfaction scale is called ["Cantril Ladder"](https://news.gallup.com/poll/122453/understanding-gallup-uses-cantril-scale.aspx) method. The score itself incorporates six factors, which are economic production, social support, life expectancy, freedom, absence of corruption, and generosity. The factors do not affect the total score assigned for each country, but they do describe why some countries rank higher than others. 
+
+
+# Data Information
+
+These data sets are created by ["The World Happiness Report"](https://worldhappiness.report). However, I collected the data sets in form of CSV from [the Kaggle website](https://www.kaggle.com/ajaypalsinghlo/world-happiness-report-2021). The data set contains two files. One is data from 2006 to 2020, while the other file covers data for 2021. The variables or factors in the data set includes:
+
+- Ladder score: The indicator of life satisfaction score, which ranges from 0 to 10.
+- Log GDP per capita: A representation of a country's standard of living and describes how much citizens benefit from their country's economy.
+- Healthy or Life Expectancy: Average number of years of population's healthy life.
+- Social Support: the national average of the binary responses (either 0 or 1) to the question if the person has someone to count on in times of trouble or not.
+- Freedom: The national average of the responses to the question of whether they are happy with the freedom they have to choose what they want to do in their life.
+- Generosity: the residual of regressing the national average of response to the GWP question “Have you donated money to a charity in the past month?” on GDP per capita.
+- Corruption:  the national average of the survey responses to two questions in the GWP: “Is corruption widespread throughout the government or not” and “Is corruption widespread within businesses or not?” The overall perception is just the average of the two 0-or-1 responses.
+
+Please refer to this [link](https://happiness-report.s3.amazonaws.com/2021/Appendix1WHR2021C2.pdf) for detailed information. 
+
+# Project Expectation
+
+This project is part of Learn by Building (LBB) section II. The project will deliver and implement some knowledge related to data visualization by using R. The goal of the project:
+
+- Discover countries and continents with the highest and lowest life satisfaction score in 2021. 
+- Discover the correlation between each factor in the life satisfaction level.
+- Discover the insight of score's comparison in 2011 and 2021 (ten years score differences). 
+
+# Libraries Preparation
+
+Below is the list of libraries used in this project. ***Note :  In this project, I try minimizing to use `library(dplyr)` and more utilizing `base`.***
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(tidyr)
+library(ggridges)
+library(wesanderson)
+library(hrbrthemes)
+library(ggchicklet)
+library(GGally)
+library(gridExtra)
+```
+
+
+# Importing Data
+
+First, read both row data sets from the working directory and assign them as variables called `data1` (data from 2006 to 2020) and `data2` (2021). Then, observe the data by applying `str()`. We found that `data1` has 1949 rows and 11 columns, while `data2` has 149 rows and 20 columns. 
+
+```{r}
+# Data set covers from 2006 to 2020. 
+data1 <- read.csv("world-happiness-report.csv")
+str(data1)
+
+# Data set covers 2021 
+data2 <- read.csv("world-happiness-report-2021.csv")
+str(data2)
+```
+
+# Data Preparation
+
+The objective in this section:
+
+1. Observe and pick the variables or columns that will be used for visualization.
+2. Drop unused columns 
+3. Create a new variable called year in data frame `data2`
+3. Change the column name if necessary.
+4. Join both data sets into a new data frame called `happy`.
+5. Check the missing values and decide if we need to drop or keep it.
+6. Check duplicate data.
+7. Transform data type.
+
+## Pick Variables
+
+The list of columns that we use in this project is `Country.name`, `year`, `Life.Ladder`, `Log.GDP.per.capital`, `Social.support`, `Healthy.life.expectancy.at.birth`, `Freedom.to.make.life.choices`,`Generosity` , and `Perceptions.of.corruption`. 
+
+## Drop Unused Columns 
+
+As illustrated from `str()` result, we need to drop several columns in `data1` and `data2`. Then, check the result with `colnames()`. 
+
+```{r}
+# Drop columns in data1
+data1 <- data1[, -c(10,11)]
+colnames(data1)
+
+# Drop columns in data2
+data2 <- data2[, -c(4:6)]
+data2 <- data2[, -c(10:17)]
+colnames(data2)
+```
+
+## Create a New Variable
+
+Since `data2` covers data for 2021, we need to create the new column `year` in data frame `data2` and fill its values with 2021. Then, check the result by using `colnames()`.
+
+```{r}
+data2$year <- 2021
+colnames(data2)
+```
+
+## Change Column Names
+
+We found the names in both data frames are not consistent and too long. To make it better and be able to merge both data frames, perhaps we can change the name. 
+
+```{r}
+# Changing column names of data1
+colnames(data1) <- c("Country", "year", "Score","Log.GDP", "Social.support", "Healthy", "Freedom","Generosity" , "Corruption")
+
+# Changing column names of data2
+colnames(data2) <- c("Country" ,"Continent", "Score", "Log.GDP", "Social.support", "Healthy", "Freedom","Generosity" , "Corruption", "year")
+```
+
+## Join Both Data Frames
+
+This section contains many steps. 
+
+- Create a new data frame called `continent`, which containing the column `Country` and `Continent` from `data2`. 
+- Merge `continent` into `data1` by using `merge`. 
+- Utilize `bind_rows()` from library `dplyr` to bind `data1` and `data2`, and assign it as new data frame called `happy`. 
+- Check the data frame `happy` by applying `str()`.
+
+```{r}
+# Select only columns `Country `and `Continent` from `data2` and assigned as `continent`
+continent <- data2[, c("Country", "Continent") ]
+
+# Join `continent` by Country into `data1`
+data1 <- merge(data1, continent, by = "Country")
+
+# Stacking `data1` and `data2` and assigned as `happy`
+happy <- bind_rows(data1, data2) 
+
+str(happy)
+```
+
+## Treatment for Missing Value. 
+
+Now, `happy` has 2035 rows and 10 variables. Let's observe missing values for each column by using `colSums()` and `is.na()`. 
+
+```{r}
+colSums(is.na(happy))
+```
+Check the percentage of missing values for each column. It seems that the proportion of missing values for each column is still acceptable for us to keep the data.
+
+```{r}
+missing.values.col <- round(as.data.frame(apply(happy, 2, function(col)sum(is.na(col))*100/length(col))),2)
+missing.values.col
+```
+## Check Duplication
+
+Check duplicate data in row by using `duplicated`. Great no duplicates!
+
+```{r}
+happy[duplicated(happy),]
+```
+
+## Datatype Transformation
+
+Transform `Country` , `year` and `Continent` as factor by applying `as.factor()`. Sneak peak with `str()` for the end result of data preparation processes.
+
+```{r}
+happy[, c("Country", "Continent", "year")] <- lapply(happy[, c("Country", "Continent", "year")], as.factor)
+str(happy)
+```
+
+# Data Manipulation, Wrangling and Visualization 
+
+## Question 1 
+
+**Discover countries and continents with the highest and lowest life satisfaction score in 2021.**
+
+In this section, we will create two plots and one table to answer the question. 
+
+a. Bar plot to illustrate the country with the highest and the lowest life satisfaction score. 
+b. Table of the mean values for each continent to show the continent with highest and the lowest score and also distribution plot (ridgeline) to visualize the distribution of life satisfaction score in each continent. 
+
+## Question 1 (a) 
+
+Create a data frame called `happy.2021` to filter data in 2021. Then make a new data frame containing the list of 10 the happiest and the least happy country called `happy.country.head` and `happy.country.tail`, respectively. Merge both data frames into `head.tail`.
+
+```{r}
+# Filter the data frame with `year` is 2021 and assigned as `happy.2021`. Order by `Score` column.
+happy.2021 <- happy[happy$year == 2021,]
+happy.2021 <- happy.2021[order(-happy.2021$Score),]
+
+# Create data frame of 10 the happiest countries called `happy.country.head` and the least happy countries called `happy.country.tail`. 
+happy.country.head <- head(happy.2021, 10)
+happy.country.tail <- tail(happy.2021, 10)
+head.tail <- rbind(happy.country.head, happy.country.tail)
+```
+
+
+Construct the plot to visualize the question by using `ggplot`. Note : [`geom_chicklet`](https://rdrr.io/github/hrbrmstr/ggchicklet/man/geom_chicklet.html) behaves similar to `ggplot2::geom_col()` but gives an option to turn sharp-edged bars into rounded rectangles. 
+
+```{r fig.width=8.5, fig.height=7.5}
+
+ggplot(head.tail, aes(x = reorder(Country, Score))) + 
+  
+  geom_chicklet(aes(y = 10, fill = 5.7), width = 0.9, radius = grid::unit(10, "pt")) +
+  geom_chicklet(aes(y = Score, fill = Score), width = 0.9, radius = grid::unit(10, "pt")) +
+  coord_flip() +
+  
+  geom_text(aes(y = Score), label = round(head.tail$Score,2), nudge_y = -0.4, size = 4, color='white') + 
+  scale_y_continuous(expand = c(0, 0.1), position = "right", limits = c(0, 10)) +
+  scale_fill_gradient2(low = "#C3B236", high = '#224709', mid = 'white', midpoint = 6) + 
+  
+  theme_ipsum(grid = '') +
+  labs(
+    x = NULL, y = "Best score = 10", fill = NULL,
+    title = "Countries with The Highest and \nThe Lowest Life Satisfaction Score in 2021",
+    subtitle = "Total countries in dataset is 149. However, the plot only shows\n20 countries which has the highest and the lowest score",
+    caption = "Source : The World Happiness Report 2021") +
+  theme(plot.title = element_text(size= 20, color = 'black', face ='bold'),
+        plot.subtitle = element_text(size= 12, color = 'black'),
+        plot.caption = element_text(size= 12, color = 'black'),
+        axis.title.x = element_text(size= 12, color = '#555955'),
+        axis.text.y = element_text(color = "black", size = 14),
+        axis.text.x = element_blank(),
+        legend.position = "none") 
+
+```
+
+>Insight:
+> Based on the above plot, nordic countries such as Finland, Denmark, Switzerland and Iceland have the highest scores with an average score above 7. In the same year, the lowest score corresponds to Afghanistan (below 3), followed by Zimbabwe and Rwanda. 
+
+## Question 1 (b) 
+
+Aggregate the `happy.2021` data frame by continent and get its mean score value. Assign the result to `happy.2021.con` and order by `Score` column. 
+
+```{r}
+library(moments)
+happy.2021.con <- aggregate(Score ~ Continent, happy.2021, mean)
+happy.2021.con$Mean.2021 <- mean(happy.2021.con$Score)
+happy.2021.con[order(-happy.2021.con$Score),]
+```
+>Insight:
+>
+- Refer to the table, North America and ANZ (7.12) and Western Europe (6.91) are continents with a high life satisfaction score. On another side, South Asia (4.44) and Sub-Saharan Africa (4.44) have a low score. 
+- Those four countries' scores are located far away from the mean value of 5.67. Whereas the other continents score remains close to the mean value. 
+
+Since distribution is as important as the average or mean method to compare the life satisfaction score. Now, we will construct [`ridgeline`](https://www.data-to-viz.com/graph/ridgeline.html) plot to illustrate the distribution of the score on each continent. 
+
+```{r, fig.height=8, fig.width=8}
+ggplot(happy.2021, aes(x = Score, y = Continent, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 2.5, size = 0.7, rel_min_height = 0.02)+
+  scale_fill_gradientn(colours =  wes_palette("Moonrise2", 10, type = "continuous"), name = "Score Level")+
+  theme_ipsum() +
+  labs(
+    x = "Life Satisfaction Score", y = "", fill = "",
+    title = "Distribution Plot of Life Satisfaction\nScore Based on Continent in 2021",
+    caption = "Source : The World Happiness Report 2021") +
+  theme(plot.title = element_text(size= 20, color = 'black', face ='bold'),
+        plot.caption = element_text(size= 12, color = 'black'),
+        axis.title.x = element_text(size= 13, color = '#555955'),
+        axis.text.y = element_text(color = "black", size = 14),
+        axis.text.x = element_text(size= 12, color = 'black'),
+        legend.position = "bottom") 
+
+```
+
+
+> Insight :
+> 
+- As we expected, scores in Western Europe and North America are mostly distributed approximately above 7. North America is normally distributed, while Western Europe has a left skew distribution. 
+- Scores in Sub-Saharan Africa, the Middle East and North Africa are mostly dispersed below 5. It also implies that those continents have been undermined by other continents. 
+- The rest of the continents' scores are distributed between 5 and 6.5. 
+
+
+## Question 2 
+
+**Discover the correlation between each factor in the life satisfaction level.**
+
+In this section, we will create three plots containing the correlation of factors that affect life satisfaction. The first two bubble plots are representative plots to observe a correlation between a few factors to the score. The last plot is a correlation matrix, which serves as the main plot to gather a conclusion in this section. 
+
+a. A bubble plot describing a correlation between life satisfaction score, life expectancy and Log GDP per capita 
+b. A bubble plot describing a correlation between life satisfaction score, freedom and life expectancy. 
+c. Correlation matrix chart. 
+
+For better visualization, we will create a new variable called `Cat.Continent` inside the `happy.2021` dataframe to divide the continent into three continents. 
+
+- Western Europe/North America and ANZ 
+- Sub-Saharan African/South Asia 
+- Other continents 
+
+```{r}
+# Create a function to divide Continent into three parts.
+convert_continent <- function(y){ 
+    if( y == "Western Europe" | y == "North America and ANZ"){
+      y <- "Western Europe/North America"
+    }else 
+      if(y == "Sub-Saharan Africa" | y == "South Asia"){
+      y <- "Sub-Saharan Africa/South Asia" 
+    }else{
+      y <- "Others" 
+    }  
+}
+
+# Create a variable called Cat.Continent by using `sapply` and transform data type into factor. Then, check dataframe by using `str()`
+happy.2021$Cat.Continent <- sapply(X = happy.2021$Continent, FUN = convert_continent) 
+happy.2021$Cat.Continent <- as.factor(happy.2021$Cat.Continent)
+str(happy.2021)
+```
+## Question 2 (a and b)
+
+Now, create two bubble plots in one page to describe the correlation as requested by using `ggplot` and `geom_point`. Then, utilize `grid.arrange` to show both plots into one page. 
+
+```{r, fig.width=8, fig.height=10}  
+
+# Create ggplot by using geom_point to create bubble plot to visualize the correlation between life expentencies, score and GDP. Assign as `plot3`
+plot3 <-ggplot(happy.2021, mapping =aes(x = Healthy, y= Score, size= Log.GDP,  fill= Cat.Continent)) +
+    geom_point(alpha=0.7, shape=21, color="black") +
+    scale_size(range = c(.1, 10), name="Log GDP per Capita") +
+    scale_fill_manual(values = wes_palette(3, name = "Cavalcanti1"), name = "Continent")  +
+    labs(x = "Life Expectencies", y = "Life Satisfaction Score",
+         title = "(A) Correlation between Life Satisfaction Score, \nLife Expectencies, and GDP")+
+    theme(plot.title = element_text(size= 10, color = 'black', face ='bold'),
+         legend.position = "right") +
+    theme_ipsum() 
+
+# Create ggplot by using geom_point to create bubble plot to visualize the correlation between corruption, score and freedom. Assign as `plot4`
+plot4 <- ggplot(happy.2021, mapping =aes(x = Corruption, y= Score, size= Freedom,  fill= Cat.Continent)) +
+    geom_point(alpha=0.7, shape=21, color="black") +
+    scale_size(range = c(.1, 10), name="Freedom") +
+    scale_fill_manual(values = wes_palette(3, name = "Cavalcanti1"), name = "Continent") +
+    labs(x = "Corruption", y = "Life Satisfaction Score",
+         title = "(B) Correlation between Life Satisfaction Score, \nCorruption, and Freedom",
+         caption =  "The World Happiness Report 2021") +
+    theme(plot.title = element_text(size= 10, color = 'black', face ='bold'),
+         plot.caption =  element_text(size= 8, color = 'black'),
+         legend.position = "right") +
+    theme_ipsum() 
+
+# Apply grid.arrange to print both plot into one page. 
+grid.arrange(plot3, plot4, nrow=2)
+```
+
+>Insight: 
+>
+- Based on plot (A), there is a strong correlation between the life satisfaction score and average life expectancy. So that, continents which have a high score, indeed also have a high life expectancy compare to continents with low scores. 
+- The correlation between wealth (GDP) and the score tends to have similar behaviour with the life expectancy correlation. Small bubbles (dark green colour) are mostly clustered in a low score, while big bubbles appear in a high score. To conclude, people living in a country that has a high life expectancy and GDP tends to be 'happier' than people living in a country with a low life expentency and GDP. 
+>
+- Refer to plot (B), the corruption level has a negative correlation with the score. It seems that the condition is only valid for continents with having low and high scores, as illustrated in green and grey bubbles. Since the "Other" continent (yellow), their level of corruption shows a high value, which should be at the middle level. 
+- There is no correlation between freedom and score of life satisfaction. 
+
+ 
+## Question 2 (c)
+
+First, create a new data frame called `global.corr` containing numeric columns. Then, plot correlation matrix by using `ggcorr`
+
+```{r}
+# Selecting variable called `global.corr` for the correlation matrix
+global.corr <- select(happy.2021, -c("Country","year","Continent", "Cat.Continent"))
+
+# Plot the correlation matrix
+ggcorr(global.corr, 
+       method = c("everything", "pearson"), 
+       size = 3, hjust = 0.1, color='black', angle=90,
+       low = "#C3B236", high = '#224709', mid = 'White',
+       label = TRUE, label_size = 3,
+       layout.exp = 3) +
+labs(title = 'Correlation Matrix',
+    caption = "The World Happiness Report 2021")+
+theme_ipsum() +
+theme(plot.title = element_text(size=18),
+      plot.subtitle = element_text(size = 12),
+       plot.caption = element_text(size = 12),
+      legend.text = element_text(size = 12))
+```
+
+> Insight:
+> Referring to the correlation matrix, the life satisfaction score has a strong positive correlation with life expectancies, social support, wealth or GDP and Freedom. While corruption has a negative connection with score. 
+> It is interesting to note that corruption and generosity have a small or almost no connection with the other factors. 
+> Therefore, higher GPD, social support and life expectancy and lower corruption lead to 'happier' countries.
+
+## Question 3
+
+**Discover the insight of score's comparison or changes in 2011 and 2021 (ten years score differences)**
+
+In this section, we will answer the question based on the country and also the continent. Therefore, we'll create two [A dumbbell plot](https://www.r-graph-gallery.com/web-extended-dumbbell-plot-ggplot2.html)
+
+a. A dumbbell plot to compare the score in 2011 and 2021 and only show 20 countries that have the biggest life satisfaction score movement.   
+b. A dumbbell plot to compare the score in 2011 and 2021 for each continent. 
+
+## Question 3 (a)
+
+Let's create a new data frame called `mover` from `happy` containing variables `year`, `Country`,`Score`, `Continent`, `class.score`. Check date frame with `str()`.
+
+```{r}
+mover <- happy[, c("year", "Country", "Score", "Continent")]
+mover <- mover[mover$year %in% c(2011, 2021),]
+str(mover)
+```
+
+Create the data frame `mean.sd` to get the mean value for each year.
+
+```{r}
+mean.sd <- aggregate(Score ~ year, mover, mean)
+mean.sd
+```
+
+This section is relatively a bit longer. Bottom line, we want to create a data frame `mover1` containing 20 countries with the biggest score movement. Then, also create two separate data frames containing values for 2011 and 2021. The step is written in the chunk. **Note: the step could be reduced if we use a library(dplyr)**
+
+```{r}
+# Use pivot_wider to move score in 2011 and 2021 into a column. 
+mover <-pivot_wider(data= mover,
+                    names_from = "year", 
+                    values_from = "Score")
+
+# Change the name of columns
+colnames(mover) <- c("Country", "Continent", "year.2011", "year.2021")
+
+# Create a new variable called `gap` containing an absolute gap values and normal values between both year. 
+mover$gap.nor <- mover$year.2021 - mover$year.2011
+mover$gap <- abs(mover$year.2021 - mover$year.2011)
+
+# Order based on the gap columns 
+mover <- mover[order(-mover$gap),]
+
+# Delete missing values and assign as `mover.clean`. This data frame will be used for plot2.
+mover.clean <- na.omit(mover)
+
+# mover1 contains 20 countries with biggest score movement. 
+mover1 <- head(mover.clean, 20)
+
+# Use pivot_longer to move score in 2011 and 2021 into rows
+mover1 <- pivot_longer(data= mover1,cols= c( "year.2011", "year.2021"))
+colnames(mover1) <- c("Country", "Continent", "gap.normal","gap", "year", "Score")
+
+# Create a dataframe `mover.2011` and `mover.2021`
+mover.2011 <- mover1[mover1$year == "year.2011",]
+mover.2021 <- mover1[mover1$year == "year.2021",]
+```
+
+Create a dumbbell plot to show the different score in 2011 and 2021 (10 year difference)
+
+```{r, fig.height=8.5, fig.width=12 }
+
+# Create ggplot for data frame mover
+ggplot(mover1)+
+  
+# Create the line of mean global in 2021. 
+   geom_vline(xintercept = mean.sd$Score[2], linetype = "solid", size = 0.8, alpha = .8, color = "#009688")+
+   coord_cartesian(clip = "off")+
+   geom_text(x = mean.sd$Score[2]+0.05, y = 21.5, label = "Mean (2021) : 5.53", size = 4, color = "#009688")+
+  
+# Create the point and segment for each countries.
+ geom_segment(data = mover.2021,
+              aes(x = Score, y = reorder(Country, gap.normal),
+              yend = mover.2011$Country, xend = mover.2011$Score), #use the $ operator to fetch data from our "data 2011"
+              color = "#e3e2e1",
+              size = 5,
+              alpha = .5) +
+  geom_point(aes(x = Score, y = Country, color = year), size = 5, show.legend = TRUE)+
+  scale_color_manual(values = c("#C3B236",'#224709'),
+                    labels=c("Score 2011", "Score 2021")) +
+
+# Styling the plot with text. 
+  geom_text(data=mover.2021, aes(x=Score , y=Country, label=round(Score,2)),size=4, hjust=1.5) +
+  geom_text(data=mover.2011, aes(x=Score , y=Country, label=round(Score,2)),size=4, hjust=1.5, color='grey') +
+
+# Create the gap values box.
+  geom_rect(data=mover.2021, aes(xmin=7.7, xmax=8.3, ymin=0, ymax=8.5), fill="#BABD8D", colour = NA) +
+  geom_rect(data=mover.2021, aes(xmin=7.7, xmax=8.3, ymin=8.5, ymax=20.5), fill='#90A955', colour = NA)+
+  geom_text(data = mover.2021,aes(label = gap.normal, x = 8, y = Country), color = "white", size = 4.5)+
+  geom_text(x = 8, y = 21, label = "GAP", size = 5, color = "Black")+
+  
+# Complete the plot with theme and labels. 
+  theme_ipsum(grid="") +
+  theme(plot.title = element_text(size=22),
+        plot.subtitle = element_text(size = 15),
+        plot.caption = element_text(size = 15),
+        axis.title.x = element_text(size= 17, color = '#555955'),
+        axis.text.y = element_text(size = 18, color = 'black'),
+        axis.text.x = element_blank(),
+        legend.text = element_text(size= 16, color = '#555955'),
+        legend.title = element_blank(),
+        legend.position = 'bottom') +
+  labs(x= "", y=NULL, 
+       title="The Biggest Life Satisfaction Score\nMovement from 2011 to 2021",
+       subtitle = "Total countries in dataset is 149. However, the plot only shows\n20 countries which has the biggest score movement",
+       caption  = 'Source: The World Happiness Report',
+       
+       ) 
+
+```
+
+> Insight: 
+> 
+- Zimbabwe and Bahrain have the biggest positive and negative score movements, respectively. 
+- 12 countries have a positive score movement and 8 countries have a negative score movement. 
+- It's interesting to note that ten countries' scores have increased from the period 2011 to 2021 to above the mean global score (intersection to the mean line score). On other hand, there are only two countries whose scores have moved below the global mean. Those countries are Venezuela and Jordan. 
+
+## Question 3 (b)
+
+For data requirement, we can use data frame `mover.clean` and grouped by Continent. 
+
+```{r}
+# Create data frame `mover.con` group by continent.  
+mover.con <- aggregate.data.frame(
+  x=list(
+    year.2011= mover.clean$year.2011, 
+    year.2021= mover.clean$year.2021), 
+  by = list(mover.clean$Continent), 
+  FUN= mean)
+
+# Create a new column `gap` and `gap.normal` 
+mover.con$gap <- abs(mover.con$year.2021 - mover.con$year.2011)
+mover.con$gap.normal <- mover.con$year.2021 - mover.con$year.2011
+
+# Pivot_longer to move columns year.2011 and year.2021 into rows. 
+mover.con <- pivot_longer(data= mover.con,cols= c( "year.2011", "year.2021"))
+colnames(mover.con) <- c("Continent", "gap.normal","gap", "year", "Score")
+
+# Create two dataframe containing data in 2011 and data in 2021.
+mover.con.2011 <- mover.con[mover.con$year == "year.2011",]
+mover.con.2021 <- mover.con[mover.con$year == "year.2021",]
+```
+
+Create a dumbbell plot 
+
+```{r, fig.height=7, fig.width=12.5}
+# Create ggplot for data frame mover
+ggplot(mover.con)+
+  
+#Create the line of mean global in 2021. 
+   geom_vline(xintercept = mean.sd$Score[2], linetype = "solid", size = 0.5, alpha = .6, color = "#009688")+
+   coord_cartesian(clip = "off")+
+   geom_text(x = mean.sd$Score[2], y = 0, label = "Mean (2021) : 5.53", size = 4, color = "#009688")+
+  
+# Create the point and segment for each continent.
+ geom_segment(data = mover.con.2021,
+              aes(x = Score, y = reorder(Continent, gap),
+              yend = mover.con.2011$Continent, xend = mover.con.2011$Score), 
+              color = "#e3e2e1",
+              size = 5,
+              alpha = 1) +
+  geom_point(aes(x = Score, y = Continent, color = year), size = 5, show.legend = TRUE)+
+  scale_color_manual(values = c("#C3B236",'#224709'),
+                     labels=c("Score 2011", "Score 2021")) +
+  xlim(4,9)+
+  
+
+# Styling the plot with text. 
+  geom_text(data=mover.con.2021, aes(x=Score , y=Continent, label=round(Score,2)),size=4, hjust=1.5) +
+  geom_text(data=mover.con.2011, aes(x=Score , y=Continent, label=round(Score,2)),size=4, hjust=-1, color='grey') +
+
+# Create the background for the placement of the gap values.
+  geom_rect(data=mover.con.2021, aes(xmin=8, xmax=8.6, ymin=0.5, ymax=5.5), fill="#BABD8D", colour = NA) +
+  geom_rect(data=mover.con.2021, aes(xmin=8, xmax=8.6, ymin=5.5, ymax=10.5), fill='#90A955', colour = NA)+
+  geom_text(data = mover.con.2021,aes(label = round(gap,2), x = 8.3, y = Continent), color = "white", size = 4.5)+
+  geom_text(x = 8.3, y = 11, label = "GAP", size = 5, color = "Black")+
+  
+# Complete the plot with theme and labels. 
+  theme_ipsum(grid="") +
+  theme(plot.title = element_text(size=21),
+        plot.subtitle = element_text(size = 13),
+        plot.caption = element_text(size = 12),
+        axis.title.x = element_text(size= 18, color = '#555955'),
+        axis.text.y = element_text(size = 17, color = 'black'),
+        axis.text.x = element_blank(),
+        legend.text = element_text(size= 12, color = '#555955'),
+        legend.title = element_blank(),
+        legend.position = "bottom") +
+  labs(x= "", y=NULL, title="Life Satisfaction Score Movement\nfrom 2011 to 2021 Based on Continent",
+       caption = 'Source :The World Happiness Report') 
+```
+
+> Insight: 
+> 
+- The average global score movement for almost 10 years is approximately (+) 0.063. It implies that more countries are 'happier' in the present time compared to the past. 
+- As it is shown in the graph, Central and Eastern Europe has significantly improved their life satisfaction score compare to other continents. Their score moved from below to above the mean value over 10 years period. On the other side, the Middle East and Africa have the lowest score movement. 
+- While four continent's scores are located far from the mean values, which are scores from Sub-Saharan Africa, South Asia, Western Europe North America and ANZ, the other continent's scores remain close with the mean value over ten years. 
+
+
+# Conclusion 
+
+**Discover countries and continents with the highest and lowest life satisfaction score in 2021** 
+
+Finland is the 'happiest' country in 2021, as opposed to Afghanistan. The majority of countries in North American and Western Europe have a 'happier' life or better life satisfaction than the rest of the world, as opposed to countries located in Sub-Saharan Africa and South Asia. 
+
+**Discover correlation between each factor in the life satisfaction level**
+
+Life expectancy, wealth, social support, corruption are correlated with happiness scores. Whereas generosity and freedom have weak or even no connection with other factors. The bottom line, higher GPD, social support and life expectancy, and lower corruption lead to 'happier' countries.
+
+**Discover the insight of life satisfaction score comparison in 2011 and 2021 (ten years period).**
+
+Countries with the biggest positive and negative score improvement are Zimbabwe and Bahrain, respectively. The only continent which has an impressive score movement is Central and Eastern Europe. More countries are classified as 'happier' in the present time compared to the past, presented by positive score movement over a period of 10 years(2011 - 2021). 
+
+**Note from the writer**
+
+Thank you to read my second project of data visualization by using R. It's such an interesting process to get to know the data and build my own analysis. Bear in mind that I'm still relatively new with this stuff. Thus, I really appreciate your kindly suggestion.  
+
+
+# References 
+
+1. [Dumbbell plot](https://www.r-graph-gallery.com/web-extended-dumbbell-plot-ggplot2.html)
+2. [Gallup World Poll](https://www.gallup.com/analytics/318875/global-research.aspx)
+3. [geom_chicklet](https://rdrr.io/github/hrbrmstr/ggchicklet/man/geom_chicklet.html)
+4. [Kaggle website](https://www.kaggle.com/ajaypalsinghlo/world-happiness-report-2021)
+5. [Ridgeline](https://www.data-to-viz.com/graph/ridgeline.html)
+6. [The World Happiness Report](https://worldhappiness.report)
+7. [The World Happiness Report_Data Information](https://happiness-report.s3.amazonaws.com/2021/Appendix1WHR2021C2.pdf)
+
+
+
+
+
+
+
+
+
+
